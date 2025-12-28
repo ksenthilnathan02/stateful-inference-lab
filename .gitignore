@@ -2,10 +2,15 @@
 __pycache__/
 *.pyc
 
-# Virtual environment
+# Virtual environments
 venv/
+.env
 
-# Editor
-.vscode/
-*.swp
-*.swo
+# OS files
+.DS_Store
+
+# Experiment outputs
+reports/*.json
+
+# Logs
+*.log
