@@ -1,7 +1,3 @@
-Perfect — below is the **exact Markdown** you can **copy-paste directly into `README.md` in VS Code**.
-No extra commentary, no explanations — just the final README content.
-
----
 
 ````markdown
 # Stateful Inference Lab (KV-Cache–Inspired)
