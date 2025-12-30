@@ -4,51 +4,43 @@ import time
 import hashlib
 import torch
 from fastapi import FastAPI
-
 from app.model import Model
 from app.cache import LRUWithTTLCache
 from app.metrics import LatencyTracker
 from app.schemas import PredictRequest, PredictResponse
-from app.config import (
-    CACHE_MAX_SIZE,
-    CACHE_TTL_SECONDS,
-    CACHE_ENABLED,
-    PREFIX_K,
-)
-
 
 app = FastAPI()
 
-# -----------------------------
-# Core components
-# -----------------------------
 model = Model()
-cache = LRUWithTTLCache(
-    max_size=CACHE_MAX_SIZE,
-    ttl_seconds=CACHE_TTL_SECONDS
-)
+cache = LRUWithTTLCache(max_size=256, ttl_seconds=30)
 latency_tracker = LatencyTracker()
 
-# -----------------------------
-# Circuit breaker state
-# -----------------------------
-CACHE_ENABLED = True
-RISK_THRESHOLD = 0.9  # conservative
-rolling_risk = []    # simple rolling buffer
-ROLLING_WINDOW = 20
 
-
-def make_cache_key(features):
-    prefix = [row[:PREFIX_K] for row in features]
+def make_cache_key(features, prefix_k=4):
+    """
+    Cache key based on prefix (KV-cache inspired).
+    """
+    prefix = features[:prefix_k]
     raw = str(prefix).encode()
     return hashlib.sha256(raw).hexdigest()
 
 
+def agent_policy(risk_score):
+    """
+    Simple agent decision logic.
+
+    This is intentionally lightweight:
+    - High risk → disable cache
+    - Low risk → enable cache
+    """
+    if risk_score > 0.8:
+        cache.enabled = False
+    else:
+        cache.enabled = True
+
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
-    global CACHE_ENABLED
-
     start = time.time()
 
     x = torch.tensor(req.features).unsqueeze(0).float()
@@ -57,23 +49,26 @@ def predict(req: PredictRequest):
     cache_hit = False
     h = None
 
-    # -----------------------------
-    # Cache lookup (if enabled)
-    # -----------------------------
-    if req.use_cache and CACHE_ENABLED:
+    # Try cache
+    if req.use_cache:
         h = cache.get(cache_key)
         if h is not None:
             cache_hit = True
 
-    # -----------------------------
-    # Encoder run if needed
-    # -----------------------------
+    # Encoder execution
     if h is None:
         h = model.encode(x)
-        if req.use_cache and CACHE_ENABLED:
+        if req.use_cache:
             cache.set(cache_key, h)
 
+    # Prediction
     y = model.predict(h)
+
+    # --- Correctness Risk Proxy (embedding magnitude) ---
+    risk_score = float(torch.norm(h).item() / 10.0)  # normalized proxy
+
+    # Agent acts
+    agent_policy(risk_score)
 
     latency_ms = (time.time() - start) * 1000
     latency_tracker.record(latency_ms)
@@ -90,10 +85,12 @@ def stats():
     return {
         "cache": cache.stats(),
         "latency": latency_tracker.summary(),
-        "cache_enabled": CACHE_ENABLED,
     }
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "cache_enabled": cache.enabled,
+    }
