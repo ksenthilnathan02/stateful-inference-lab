@@ -1,4 +1,3 @@
-````md
 # Stateful Inference Lab (KV-Cache–Inspired)
 
 A production-style machine learning inference system that explores **performance–correctness tradeoffs in stateful inference**, inspired by **KV caching** techniques used in modern ML systems.
@@ -323,5 +322,3 @@ stateful-inference-lab/
 * Multi-model versioning
 
 ````
-
----
