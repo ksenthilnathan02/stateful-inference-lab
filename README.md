@@ -320,5 +320,3 @@ stateful-inference-lab/
 * Canary cache policies
 * Prometheus / Grafana integration
 * Multi-model versioning
-
-````
